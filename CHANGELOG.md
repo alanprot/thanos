@@ -15,6 +15,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 ### Added
 
 - [#5440](https://github.com/thanos-io/thanos/pull/5440) HTTP metrics: export number of in-flight HTTP requests.
+- [#5475](https://github.com/thanos-io/thanos/pull/5475) Compact/Store: Added `--block-fetch-concurrency` allowing to configure number of go routines for download block files during compaction.
 
 ### Changed
 
