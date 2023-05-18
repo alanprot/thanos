@@ -4,8 +4,8 @@
 package strutil
 
 import (
+	"container/heap"
 	"sort"
-	"strings"
 )
 
 // MergeSlices merges a set of sorted string slices into a single ones
@@ -18,7 +18,7 @@ func MergeSlices(a ...[]string) []string {
 		return a[0]
 	}
 	l := len(a) / 2
-	return mergeTwoStringSlices(MergeSlices(a[:l]...), MergeSlices(a[l:]...))
+	return KWayMerge(MergeSlices(a[:l]...), MergeSlices(a[l:]...))
 }
 
 // MergeUnsortedSlices behaves like StringSlices but input slices are validated
@@ -31,30 +31,82 @@ func MergeUnsortedSlices(a ...[]string) []string {
 	}
 	return MergeSlices(a...)
 }
-
-func mergeTwoStringSlices(a, b []string) []string {
-	maxl := len(a)
-	if len(b) > len(a) {
-		maxl = len(b)
+func KWayMerge(arrays ...[]string) []string {
+	k := len(arrays)
+	if k == 0 {
+		return []string{}
 	}
-	res := make([]string, 0, maxl*10/9)
+	h := MinHeap{nodes: make([]*Node, 0, k), valMap: make(map[string]struct{}, k)}
+	result := make([]string, 0, len(arrays[0]))
 
-	for len(a) > 0 && len(b) > 0 {
-		d := strings.Compare(a[0], b[0])
-
-		if d == 0 {
-			res = append(res, a[0])
-			a, b = a[1:], b[1:]
-		} else if d < 0 {
-			res = append(res, a[0])
-			a = a[1:]
-		} else if d > 0 {
-			res = append(res, b[0])
-			b = b[1:]
+	// Initialize the h with the first element from each array
+	for i, arr := range arrays {
+		if len(arr) > 0 {
+			h.nodes = append(h.nodes, &Node{arr[0], i, 0})
 		}
 	}
-	// Append all remaining elements.
-	res = append(res, a...)
-	res = append(res, b...)
-	return res
+	heap.Init(&h)
+
+	// Keep popping elements from the h and adding to the result
+	for h.Len() > 0 {
+		node := h.nodes[0]
+		if len(result) == 0 || result[len(result)-1] != node.val {
+			result = append(result, node.val)
+		}
+
+		remove := true
+		// If there are more elements in the same array, add to h
+		for node.idx < len(arrays[node.array])-1 {
+			next := arrays[node.array][node.idx+1]
+			node.val = next
+			node.idx++
+			if !h.Contains(next) {
+				heap.Fix(&h, 0)
+				remove = false
+				break
+			}
+		}
+
+		if remove {
+			heap.Pop(&h)
+		}
+	}
+
+	return result
+}
+
+// Node struct represents an element in the heap
+type Node struct {
+	val   string
+	array int
+	idx   int
+}
+
+// MinHeap is a priority queue that stores Nodes in increasing order of val
+type MinHeap struct {
+	nodes  []*Node
+	valMap map[string]struct{}
+}
+
+func (h MinHeap) Len() int           { return len(h.nodes) }
+func (h MinHeap) Less(i, j int) bool { return h.nodes[i].val < h.nodes[j].val }
+func (h MinHeap) Swap(i, j int)      { h.nodes[i], h.nodes[j] = h.nodes[j], h.nodes[i] }
+
+func (h *MinHeap) Push(x interface{}) {
+	h.nodes = append(h.nodes, x.(*Node))
+	h.valMap[x.(*Node).val] = struct{}{}
+}
+
+func (h MinHeap) Contains(x string) bool {
+	_, ok := h.valMap[x]
+	return ok
+}
+
+func (h *MinHeap) Pop() interface{} {
+	old := h.nodes
+	n := len(old)
+	node := old[n-1]
+	h.nodes = old[:n-1]
+	delete(h.valMap, node.val)
+	return node
 }

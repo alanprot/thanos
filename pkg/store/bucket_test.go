@@ -1628,7 +1628,8 @@ func TestBucketSeries_OneBlock_InMemIndexCacheSegfault(t *testing.T) {
 }
 
 func TestSeries_RequestAndResponseHints(t *testing.T) {
-	tb, store, seriesSet1, seriesSet2, block1, block2, close := setupStoreForHintsTest(t)
+	tb := testutil.NewTB(t)
+	tb, store, seriesSet1, seriesSet2, block1, block2, close := setupStoreForHintsTest(tb, 2)
 	defer close()
 
 	testCases := []*storetestutil.SeriesCase{
@@ -1932,17 +1933,15 @@ func createBlockWithOneSeriesWithStep(t testutil.TB, dir string, lbls labels.Lab
 	return createBlockFromHead(t, dir, h)
 }
 
-func setupStoreForHintsTest(t *testing.T) (testutil.TB, *BucketStore, []*storepb.Series, []*storepb.Series, ulid.ULID, ulid.ULID, func()) {
-	tb := testutil.NewTB(t)
-
+func setupStoreForHintsTest(tb testutil.TB, series int) (testutil.TB, *BucketStore, []*storepb.Series, []*storepb.Series, ulid.ULID, ulid.ULID, func()) {
 	closers := []func(){}
 
-	tmpDir := t.TempDir()
+	tmpDir := tb.TempDir()
 
 	bktDir := filepath.Join(tmpDir, "bkt")
 	bkt, err := filesystem.NewBucket(bktDir)
-	testutil.Ok(t, err)
-	closers = append(closers, func() { testutil.Ok(t, bkt.Close()) })
+	testutil.Ok(tb, err)
+	closers = append(closers, func() { testutil.Ok(tb, bkt.Close()) })
 
 	var (
 		logger   = log.NewNopLogger()
@@ -1959,28 +1958,28 @@ func setupStoreForHintsTest(t *testing.T) (testutil.TB, *BucketStore, []*storepb
 	}
 
 	// Create TSDB blocks.
-	head, seriesSet1 := storetestutil.CreateHeadWithSeries(t, 0, storetestutil.HeadGenOptions{
+	head, seriesSet1 := storetestutil.CreateHeadWithSeries(tb, 0, storetestutil.HeadGenOptions{
 		TSDBDir:          filepath.Join(tmpDir, "0"),
 		SamplesPerSeries: 1,
-		Series:           2,
+		Series:           series,
 		PrependLabels:    extLset,
 		Random:           random,
 	})
-	block1 := createBlockFromHead(t, bktDir, head)
-	testutil.Ok(t, head.Close())
-	head2, seriesSet2 := storetestutil.CreateHeadWithSeries(t, 1, storetestutil.HeadGenOptions{
+	block1 := createBlockFromHead(tb, bktDir, head)
+	testutil.Ok(tb, head.Close())
+	head2, seriesSet2 := storetestutil.CreateHeadWithSeries(tb, 1, storetestutil.HeadGenOptions{
 		TSDBDir:          filepath.Join(tmpDir, "1"),
 		SamplesPerSeries: 1,
-		Series:           2,
+		Series:           series,
 		PrependLabels:    extLset,
 		Random:           random,
 	})
-	block2 := createBlockFromHead(t, bktDir, head2)
-	testutil.Ok(t, head2.Close())
+	block2 := createBlockFromHead(tb, bktDir, head2)
+	testutil.Ok(tb, head2.Close())
 
 	for _, blockID := range []ulid.ULID{block1, block2} {
 		_, err := metadata.InjectThanos(logger, filepath.Join(bktDir, blockID.String()), thanosMeta, nil)
-		testutil.Ok(t, err)
+		testutil.Ok(tb, err)
 	}
 
 	// Instance a real bucket store we'll use to query back the series.
@@ -2010,8 +2009,8 @@ func setupStoreForHintsTest(t *testing.T) (testutil.TB, *BucketStore, []*storepb
 	testutil.Ok(tb, err)
 	testutil.Ok(tb, store.SyncBlocks(context.Background()))
 
-	closers = append(closers, func() { testutil.Ok(t, store.Close()) })
-
+	closers = append(closers, func() { testutil.Ok(tb, store.Close()) })
+	tb.N()
 	return tb, store, seriesSet1, seriesSet2, block1, block2, func() {
 		for _, close := range closers {
 			close()
@@ -2019,8 +2018,26 @@ func setupStoreForHintsTest(t *testing.T) (testutil.TB, *BucketStore, []*storepb
 	}
 }
 
+func Benchmark_LabelsNames(b *testing.B) {
+	tb := testutil.NewTB(b)
+	_, store, _, _, _, _, _ := setupStoreForHintsTest(tb, 50000)
+
+	req := &storepb.LabelValuesRequest{
+		Start: 0,
+		End:   3,
+		Label: "i",
+	}
+
+	for n := 0; n < b.N; n++ {
+		r, err := store.LabelValues(context.Background(), req)
+		testutil.Ok(tb, err)
+		testutil.Equals(tb, 50000, len(r.Values))
+	}
+}
+
 func TestLabelNamesAndValuesHints(t *testing.T) {
-	_, store, seriesSet1, seriesSet2, block1, block2, close := setupStoreForHintsTest(t)
+	tb := testutil.NewTB(t)
+	_, store, seriesSet1, seriesSet2, block1, block2, close := setupStoreForHintsTest(tb, 2)
 	defer close()
 
 	type labelNamesValuesCase struct {
