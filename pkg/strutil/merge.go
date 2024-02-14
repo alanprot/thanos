@@ -5,20 +5,55 @@ package strutil
 
 import (
 	"sort"
-	"strings"
+
+	"github.com/bboreham/go-loser"
 )
+
+func NewStringListIter(s []string) *StringListIter {
+	return &StringListIter{l: s, cur: -1}
+}
+
+type StringListIter struct {
+	l   []string
+	cur int
+}
+
+func (s *StringListIter) Next() bool {
+	if s.cur+1 >= len(s.l) {
+		return false
+	}
+	s.cur++
+	return true
+}
+func (s *StringListIter) At() string { return s.l[s.cur] }
 
 // MergeSlices merges a set of sorted string slices into a single ones
 // while removing all duplicates.
 func MergeSlices(a ...[]string) []string {
-	if len(a) == 0 {
-		return nil
+	its := make([]*StringListIter, 0, len(a))
+	maxLength := 0
+
+	for _, s := range a {
+		if len(s) > maxLength {
+			maxLength = len(s)
+		}
+		its = append(its, NewStringListIter(s))
 	}
-	if len(a) == 1 {
-		return a[0]
+	r := make([]string, 0, maxLength)
+	lt := loser.New(its, string([]byte{0xff}))
+	if maxLength == 0 {
+		return r
 	}
-	l := len(a) / 2
-	return mergeTwoStringSlices(MergeSlices(a[:l]...), MergeSlices(a[l:]...))
+	lt.Next()
+	current := lt.At()
+	r = append(r, current)
+	for lt.Next() {
+		if lt.At() != current {
+			current = lt.At()
+			r = append(r, current)
+		}
+	}
+	return r
 }
 
 // MergeUnsortedSlices behaves like StringSlices but input slices are validated
@@ -32,29 +67,3 @@ func MergeUnsortedSlices(a ...[]string) []string {
 	return MergeSlices(a...)
 }
 
-func mergeTwoStringSlices(a, b []string) []string {
-	maxl := len(a)
-	if len(b) > len(a) {
-		maxl = len(b)
-	}
-	res := make([]string, 0, maxl*10/9)
-
-	for len(a) > 0 && len(b) > 0 {
-		d := strings.Compare(a[0], b[0])
-
-		if d == 0 {
-			res = append(res, a[0])
-			a, b = a[1:], b[1:]
-		} else if d < 0 {
-			res = append(res, a[0])
-			a = a[1:]
-		} else if d > 0 {
-			res = append(res, b[0])
-			b = b[1:]
-		}
-	}
-	// Append all remaining elements.
-	res = append(res, a...)
-	res = append(res, b...)
-	return res
-}
